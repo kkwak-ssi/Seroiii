@@ -85,6 +85,11 @@ header .nav .btn{flex:0 0 auto;padding:7px 15px;font-weight:600}
 .day-memo-btn{min-height:15px;line-height:15px;padding:0 2px}
 .event-add{bottom:1px;right:5px}
 @media(max-width:580px){.day{min-height:45px}.lane,.lane.has-cont{padding:5px 8px 5px 8px;min-height:45px;gap:2px}.date{padding:7px 6px}.event{padding:3px 0}}
+/* v3.4: reliable add target beside existing / recurring events. */
+.event-add{width:40px;height:38px;min-width:40px;min-height:38px;right:0;bottom:0;z-index:6;display:flex;align-items:center;justify-content:center;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.lane,.lane.has-cont{padding-bottom:31px}
+.lane .event{max-width:calc(100% - 2px)}
+@media(max-width:580px){.event-add{width:42px;height:40px;min-width:42px;min-height:40px}.lane,.lane.has-cont{padding-bottom:32px}}
 </style></head><body>
 <header><div class="headwrap"><div class="logo">〈 세로이!! 〉</div><div class="headspacer"></div><button class="btn tiny" id="searchButton" title="통합 검색">⌕ 검색</button><button class="btn tiny primary" id="todayButton">오늘</button></div><nav class="nav" aria-label="주요 메뉴"><button class="btn active" data-tab="calendar">일정</button><button class="btn" data-tab="ledger">가계부</button><button class="btn" data-tab="settings">설정</button></nav></header>
 <div class="app"><div class="cloud" id="cloudStatus">이 기기에서 사용 중 · Google 로그인 전</div>
@@ -136,7 +141,19 @@ function renderCalendar(){
  const p=$('planner');p.replaceChildren();let date=first,prevMonth='';const today=TODAY();
  const spans=data.events.filter(e=>e.start<e.end&&e.end>=first&&e.start<=last).sort((a,b)=>a.start.localeCompare(b.start)||a.end.localeCompare(b.end));
  const visibleEvents=data.events.filter(e=>e.end>=first&&e.start<=last).sort((a,b)=>a.start.localeCompare(b.start)||b.end.localeCompare(a.end)||String(a.id).localeCompare(String(b.id)));
- const slots=[];const trackById=new Map();for(const e of visibleEvents){let i=0;while(i<slots.length&&slots[i]>=e.start)i++;slots[i]=e.end;trackById.set(e.id,i)}
+ // Long events keep one lane across all their dates. Single-day events reuse
+ // the leftmost lane not occupied by a long event on that particular day.
+ // Registering two ordinary appointments on one day must NOT indent one of them.
+ const slots=[];const trackById=new Map();
+ for(const e of visibleEvents.filter(x=>x.start<x.end)){
+  let i=0;while(i<slots.length&&slots[i]>=e.start)i++;
+  slots[i]=e.end;trackById.set(e.id,i);
+ }
+ for(const e of visibleEvents.filter(x=>x.start===x.end)){
+  const occupied=new Set(visibleEvents.filter(x=>x.start<x.end&&x.start<=e.start&&x.end>=e.start).map(x=>trackById.get(x.id)));
+  let i=0;while(occupied.has(i))i++;
+  trackById.set(e.id,i);
+ }
  while(date<=last){const day=date,d=parse(day),month=monthOf(day);
  if(month!==prevMonth){const banner=el('div',`${d.getFullYear()}년 ${d.getMonth()+1}월`,'month-banner');const across=spans.filter(e=>e.start<day&&e.end>=day);if(across.length){const br=el('div',undefined,'banner-rails');for(const e of across){const line=el('span',undefined,'banner-line');line.style.left=(trackById.get(e.id)*17+1)+'px';line.style.background=e.color||COLORS[0];br.append(line)}banner.append(br)}p.append(banner);prevMonth=month}
  const row=el('div',undefined,'day'+(day===today?' today':'')+(d.getDay()===0?' sun':'')+(d.getDay()===6?' sat':''));row.dataset.date=day;
@@ -155,7 +172,7 @@ function renderCalendar(){
  const noteText=String(data.dayMemos?.[day]||'');const memoLine=el('div',undefined,'day-memo-line');if(active.length)memoLine.style.marginLeft=(Math.max(...active.map(e=>trackById.get(e.id))) * 17 + 20)+'px';
  if(noteText){const label=el('span','✎','day-memo-label');memoLine.append(label);const textarea=el('textarea',undefined,'day-memo');textarea.value=noteText;textarea.rows=1;textarea.setAttribute('aria-label',day+' 하루 메모');const fitMemo=()=>{textarea.style.height='auto';textarea.style.height=textarea.scrollHeight+'px'};requestAnimationFrame(fitMemo);textarea.oninput=()=>{fitMemo();data.dayMemos[day]=textarea.value;clearTimeout(textarea._saveTimer);textarea._saveTimer=setTimeout(()=>persist(),650)};textarea.onblur=()=>{clearTimeout(textarea._saveTimer);persist()};memoLine.append(textarea);lane.append(memoLine)}
  else {const btn=el('button','✎','day-memo-btn');btn.type='button';btn.onclick=ev=>{ev.stopPropagation();btn.remove();const textarea=el('textarea',undefined,'day-memo');textarea.rows=1;textarea.placeholder='오늘 기억할 말, 나에게 남기는 메모…';textarea.setAttribute('aria-label',day+' 하루 메모');memoLine.append(textarea);textarea.focus();textarea.oninput=()=>{textarea.style.height='auto';textarea.style.height=textarea.scrollHeight+'px';data.dayMemos[day]=textarea.value;clearTimeout(textarea._saveTimer);textarea._saveTimer=setTimeout(()=>persist(),650)};textarea.onblur=()=>{clearTimeout(textarea._saveTimer);if(textarea.value.trim())data.dayMemos[day]=textarea.value;else delete data.dayMemos[day];persist();if(!textarea.value.trim())renderCalendar()}};memoLine.append(btn);lane.append(memoLine)}
- const addBtn=el('button','+','event-add');addBtn.type='button';addBtn.title='이 날짜에 일정 추가';addBtn.setAttribute('aria-label',day+' 새 일정 추가');for(const t of ['pointerdown','pointerup'])addBtn.addEventListener(t,ev=>ev.stopPropagation());addBtn.onclick=ev=>{ev.preventDefault();ev.stopPropagation();openEvent(day,day)};lane.append(addBtn);
+ const addBtn=el('button','+','event-add');addBtn.type='button';addBtn.title='이 날짜에 일정 추가';addBtn.setAttribute('aria-label',day+' 새 일정 추가');for(const t of ['pointerdown','pointerup','pointercancel'])addBtn.addEventListener(t,ev=>ev.stopPropagation());addBtn.onclick=ev=>{ev.preventDefault();ev.stopPropagation();openEvent(day,day)};lane.append(addBtn);
  row.append(left,lane);p.append(row);date=shift(date,1)}if(mobileStart)document.querySelectorAll('.day').forEach(n=>n.classList.toggle('selected',n.dataset.date===mobileStart))
 }
 function scrollToDate(date,behavior='smooth'){const row=document.querySelector(`.day[data-date="${date}"]`);if(row)row.scrollIntoView({behavior,block:'center'})}
