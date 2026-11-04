@@ -199,8 +199,11 @@ function renderCalendar(){
  for(const e of found){const entry=el('div',undefined,'event'+(e.important?' important':'')+(e.done?' complete':''));entry.dataset.eventId=e.id;entry.style.setProperty('--col',e.color||COLORS[0]);entry.style.marginLeft=((trackById.get(e.id)??0)*17+6)+'px';
  if(e.start===e.end){entry.classList.add('single-event');entry.style.setProperty('--track-index',String(trackById.get(e.id)??0));const line=el('span',undefined,'single-line');line.setAttribute('aria-hidden','true');line.style.background=e.color||COLORS[0];entry.append(line)}
  const holder=el('label',undefined,'check-holder');holder.setAttribute('title','확인/완료 표시');const box=el('input',undefined,'check');box.type='checkbox';box.checked=!!e.done;box.setAttribute('aria-label',e.title+' 확인 완료');box.onclick=x=>x.stopPropagation();box.onchange=()=>{e.done=box.checked;persist();renderCalendar()};holder.onclick=x=>x.stopPropagation();holder.append(box);entry.append(holder);
- let time='';if(e.startTime&&e.endTime)time=e.start===e.end?e.startTime+'–'+e.endTime:day===e.start?e.startTime:day===e.end?e.endTime:'';
- const content=el('span',undefined,'content');if(time)content.append(el('span',time,'time'));content.append(el('span',(e.important?'★ ':'')+e.title,'name'));if(e.start!==e.end)content.append(el('span',day===e.start?'시작':'종료','event-edge'));
+ let time='';
+ if(e.start===e.end){if(e.startTime&&e.endTime)time=e.startTime+'–'+e.endTime}
+ else if(day===e.start&&e.startTime)time=e.startTime+'~';
+ else if(day===e.end&&e.endTime)time='~'+e.endTime;
+ const content=el('span',undefined,'content');if(time)content.append(el('span',time,'time'));content.append(el('span',(e.important?'★ ':'')+e.title,'name'));
  if(e.memo)content.append(el('span',' — '+e.memo,'memo'));entry.append(content);entry.onclick=()=>openEvent(e.start,e.end,e.id);lane.append(entry)}
  const noteText=String(data.dayMemos?.[day]||'');
  const tools=el('div',undefined,'day-tools');
@@ -223,8 +226,15 @@ function renderCalendar(){
  for(const e of active.filter(x=>x.start<x.end&&(x.start===day||x.end===day))){
   const track=[...lane.querySelectorAll('.cont-track')].find(x=>x.dataset.eventId===String(e.id));
   const marker=[...lane.querySelectorAll('.event')].find(x=>x.dataset.eventId===String(e.id));
-  if(track&&marker){const line=track.querySelector('.cont-line');const y=marker.offsetTop+marker.offsetHeight/2;
-   if(e.start===day)line.style.top=y+'px';if(e.end===day)line.style.bottom=Math.max(0,lane.offsetHeight-y)+'px';
+  if(track&&marker){
+   const line=track.querySelector('.cont-line');
+   // Match the single-day line's small extension above/below the checkbox row.
+   // Start-day tracks continue all the way to the day bottom; end-day tracks
+   // extend from the day top and stop just below the ending event row.
+   const top=marker.offsetTop+1;
+   const bottom=marker.offsetTop+marker.offsetHeight-1;
+   if(e.start===day)line.style.top=top+'px';
+   if(e.end===day)line.style.bottom=Math.max(0,lane.offsetHeight-bottom)+'px';
   }
  }
  date=shift(date,1)}if(mobileStart)document.querySelectorAll('.day').forEach(n=>n.classList.toggle('selected',n.dataset.date===mobileStart))
